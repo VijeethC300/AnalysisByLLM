@@ -50,8 +50,7 @@ content  = """
     "The response should directly use the 'get_column_type' function."
 """
 
-## This is schema.
-## function schema definition
+## This is function schema definition.
 
 functions= [
     {
@@ -88,7 +87,6 @@ functions= [
 ]
 
 #######################################################################
-# Added on 13Dec
 # To get file name entered in command prompt
 
 def process_data(filename):
@@ -104,10 +102,7 @@ if __name__ == "__main__":
         print("Error: Please provide a CSV filename as an argument.")
 
 #######################################################################
-#Created on 14Dec
-import chardet
-
-#filename = "media.csv"
+# To manage differnt file formats
 
 encoding_details=dict()
 with open(filename, "rb") as file:
@@ -115,28 +110,21 @@ with open(filename, "rb") as file:
     encoding_value = encoding_details['encoding']
     #print(encoding_value)
 
-
-#if encoding_value == 'ascii':
 if encoding_value != 'utf-8':
     # Remove non-ASCII characters and save to a new file
     with open(filename, "r", encoding=encoding_value, errors="ignore") as infile:
         content = infile.read()
 
-    #filename = "_".join(["cleaned",filename])
     with open(filename, "w", encoding='utf-8') as outfile:
         outfile.write(content)
 
 # Read the cleaned file
-#df = pd.read_csv(filename, encoding=encoding_value)
 df = pd.read_csv(filename)
 
 #######################################################################
 
 with open(file=filename, mode='r', encoding='utf-8',errors='ignore') as f:  # Ignore invalid characters
     data = ''.join([f.readline() for i in range (10)])
-
-#######################################################################
-data
 
 #######################################################################
 # Specifiction as required by OpenAI
@@ -154,22 +142,12 @@ json_data = {
 
 #######################################################################
 
-json.loads(json.dumps(functions))
-
-#######################################################################
-#df = pd.read_csv("house-rent.csv")
-
 r = requests.post(url=url, headers=headers, json=json_data)
 
-#######################################################################
-#Added 13Dec
-metadata = json.loads(r.json()['choices'][0]['message']['function_call']['arguments'])['column_metadata']
-metadata
 #######################################################################
 
 try:
     function_call = r.json()['choices'][0]['message']['function_call']
-    #print(function_call)  # Print the function_call if successful
 except (KeyError, IndexError):
     print("Error: Could not retrieve function_call from the API response.")
 
@@ -177,11 +155,7 @@ except (KeyError, IndexError):
 
 output = r.json()['choices'][0]['message']['function_call']['arguments']
 
-#print(output)
-
 #######################################################################
-
-#json_data
 
 # To create folder name
 folders = ["goodreads", "happiness", "media"]
@@ -205,8 +179,6 @@ for folder in folders:
 ####################################################################################
 
 # Read random samples from the data set and do baisc clean-up
-#import pandas as pd
-#import numpy as np
 
 def clean_and_summarize_data(file_path, column_info):
     """
@@ -307,7 +279,6 @@ if __name__ == "__main__":
     except json.JSONDecodeError:
         raise Exception("Invalid JSON format for column info.")
 
-    #file_path = "house-rent.csv"
     file_path = filename
     try:
         cleaned_data, summary_stats = clean_and_summarize_data(file_path, column_info)
