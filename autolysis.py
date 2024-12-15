@@ -13,302 +13,208 @@
 # ///
 
 # Import Libraries
-import numpy as np
-import matplotlib.pyplot as plt
-import pandas as pd
-import json
-import requests
 import os
 import sys
+import json
+import requests
 import chardet
-
-# Imports the load_dotenv function from the python-dotenv library.
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
 from dotenv import load_dotenv
 
-# Loads environment variables from a .env file.
+# Load Environment Variables
 load_dotenv()
-
-# Retrieves the value of the AIPROXY_TOKEN environment variable.
 AIPROXY_TOKEN = os.getenv("AIPROXY_TOKEN")
 
-# Sets the URL for the OpenAI API endpoint.
-url = "http://aiproxy.sanand.workers.dev/openai/v1/chat/completions"
-model = "gpt-4o-mini"
-
-# Header defintion for the HTTP request and authorization.
-headers = {
+# Constants
+API_URL = "http://aiproxy.sanand.workers.dev/openai/v1/chat/completions"
+MODEL = "gpt-4o-mini"
+HEADERS = {
     "Content-Type": "application/json",
-    "Authorization": f"Bearer{AIPROXY_TOKEN}",
+    "Authorization": f"Bearer {AIPROXY_TOKEN}",
 }
 
-# Prompt to the LLM
-content = """
-     "Analyze the given dataset."
-    "The first line is the header and the subsequest lines are sample data."
-    "Identify the column names with their data types from a CSV file."
-    "Infer the data type by considering majority of the values in each column."
-    "Columns may have unclean data in them. Ignore those cells"
-    "Supported types are 'string', 'integer', 'boolean', 'float', 'date'."
-    "Analyze the given data and return a JSON object where,"
-    "each entry has the column name and its inferred data type."
-    "The response should directly use the 'get_column_type' function."
-"""
-
-# This is function schema definition.
-
-functions = [
-    {
-        "name": "get_column_type",
-        "description": "Identify column names and their data types from a dataset",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "column_metadata": {
-                    "type": "array",
-                    "description": "Meta data for each column.",
-                    "minItems": 1,
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "column_name": {
-                                "type": "string",
-                                "description": "Name of the column.",
-                            },
-                            "column_type": {
-                                "type": "string",
-                                "description": "DataType of the column.",
-                            },
-                        },
-                        "required": ["column_name", "column_type"],
-                    },
-                },
-            },
-            "required": ["column_metadata"],
-        },
-    }
-]
-
-######################################################################
-# To get file name entered in command prompt and manage differnt file formats
+FOLDERS = ["goodreads", "happiness", "media"]
 
 
-def process_data(filename):
+# Function Definitions
+def detect_encoding(file_path):
+    """Detect the encoding of a file."""
+    with open(file_path, "rb") as f:
+        result = chardet.detect(f.read(100000))  # Read first 100KB
+    return result.get("encoding", "utf-8")
 
-    encoding_details = dict()
-    with open(filename, "rb") as file:
-        # Process the data from the CSV file here
-        print(f"Processing data from: {filename}")
 
-        # with open(filename, "rb") as file:
-        encoding_details = chardet.detect(
-            file.read(100000)
-        )  # Reads the first 100KB of the file
-        encoding_value = encoding_details["encoding"]
-        # print(encoding_value)
-
-    if encoding_value != "utf-8":
-        # Remove non-ASCII characters and save to a new file
-        with open(filename, "r", encoding=encoding_value, errors="ignore") as infile:
+def clean_file_encoding(file_path, encoding):
+    """Ensure the file is in UTF-8 encoding."""
+    if encoding != "utf-8":
+        with open(file_path, "r", encoding=encoding, errors="ignore") as infile:
             content = infile.read()
-
-        with open(filename, "w", encoding="utf-8") as outfile:
+        with open(file_path, "w", encoding="utf-8") as outfile:
             outfile.write(content)
 
 
-if __name__ == "__main__":
-    if len(sys.argv) > 1:
-        filename = sys.argv[1]
-        process_data(filename)
-    else:
-        print("Error: Please provide a CSV filename as an argument.")
+def read_sample_data(file_path, num_lines=10):
+    """Read the first few lines of the dataset."""
+    with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+        return "".join([f.readline() for _ in range(num_lines)])
 
-with open(
-    file=filename, mode="r", encoding="utf-8", errors="ignore"
-) as f:  # Ignore invalid characters
-    data = "".join([f.readline() for i in range(10)])
 
-######################################################################
-# Specifiction as required by OpenAI
-json_data = {
-    "model": model,
-    "messages": [
-        {"role": "system", "content": content},
-        {"role": "user", "content": data},
-    ],
-    # "functions": json.loads(json.dumps (functions)),
-    "functions": functions,
-    "function_call": {"name": "get_column_type"},
-}
+def create_folders_with_readme(folder_names):
+    """Create folders and add README.md and placeholder images."""
+    for folder in folder_names:
+        os.makedirs(folder, exist_ok=True)
+        with open(os.path.join(folder, "README.md"), "w") as readme:
+            readme.write(
+                f"# {folder.capitalize()}\n\nThis is the README file for the {folder} folder."
+            )
+        with open(os.path.join(folder, "Image01.png"), "wb") as img:
+            img.write(b"")
 
-######################################################################
 
-r = requests.post(url=url, headers=headers, json=json_data)
+def prepare_json_payload(content, sample_data, functions):
+    """Prepare the JSON payload for the API request."""
+    return {
+        "model": MODEL,
+        "messages": [
+            {"role": "system", "content": content},
+            {"role": "user", "content": sample_data},
+        ],
+        "functions": functions,
+        "function_call": {"name": "get_column_type"},
+    }
 
-######################################################################
 
-try:
-    function_call = r.json()["choices"][0]["message"]["function_call"]
-except (KeyError, IndexError):
-    print("Error: Could not retrieve function_call from the API response.")
-
-######################################################################
-
-output = r.json()["choices"][0]["message"]["function_call"]["arguments"]
-
-######################################################################
-
-# To create folder name
-folders = ["goodreads", "happiness", "media"]
-
-# Loop through each folder
-for folder in folders:
-    # Create folder if it doesn't exist
-    os.makedirs(folder, exist_ok=True)
-
-    # Create README.md file inside the folder
-    readme_path = os.path.join(folder, "README.md")
-    with open(readme_path, "w") as readme_file:
-        readme_file.write(
-            f"# {folder.capitalize()}\n\nREADME file for {folder} folder."
-        )
-
-    # Create Image01.png file inside the folder
-    image_path = os.path.join(folder, "Image01.png")
-    with open(image_path, "wb") as image_file:
-        # Write an empty file or placeholder content
-        image_file.write(b"")
-
-######################################################################
-
-# Read random samples from the data set and do baisc clean-up
+def post_to_api(url, headers, json_data):
+    """Send a POST request to the API."""
+    response = requests.post(url, headers=headers, json=json_data)
+    try:
+        return response.json()
+    except ValueError:
+        raise Exception("Error parsing API response as JSON")
 
 
 def clean_and_summarize_data(file_path, column_info):
     """
-    Cleans and summarizes a dataset.
+    Cleans and summarizes a dataset based on provided column metadata.
 
     Parameters:
     file_path (str): Path to the dataset (CSV format).
     column_info (list): List of dictionaries with column_name and column_type.
 
     Returns:
-    tuple: Cleaned dataset (pd.DataFrame) and
-    summary statistics (pd.DataFrame).
+    tuple: Cleaned dataset (pd.DataFrame) and summary statistics (pd.DataFrame).
     """
-    # Load the dataset
     try:
         data = pd.read_csv(file_path)
-    except FileNotFoundError:
-        raise Exception(f"File not found: {file_path}")
+        data = data.sample(n=min(10, len(data)), random_state=42)  # Limit to 10 samples
 
-    # Limit data analysis to a random sample of 10 records
-    data = data.sample(n=10, random_state=42)
-
-    # Validate and clean data based on column_info
-    for column_info_item in column_info:
-        if not isinstance(column_info_item, dict):
-            raise Exception(
-                "Each item in column_info must be a dictionary with 'column_name','column_type'"
-            )
-
-        column = column_info_item.get("column_name")
-        dtype = column_info_item.get("column_type")
-
-        if not column or not dtype:
-            raise Exception(
-                "Each column_info dictionary must have 'column_name' & 'column_type' keys."
-            )
-
-        if column in data.columns:
-            if dtype == "date":
-                # Convert to datetime, drop rows with invalid values
-                data[column] = pd.to_datetime(data[column], errors="coerce")
-                data = data[data[column].notna()]
-            elif dtype == "category":
-                # Ensure column is categorical
-                data[column] = data[column].astype("category")
-            elif dtype == "integer":
-                # Convert to integer, drop rows with invalid values
-                data[column] = pd.to_numeric(
-                    data[column], errors="coerce", downcast="integer"
-                )
-                data = data[data[column].notna()]
-            elif dtype == "float":
-                # Convert to float, drop rows with invalid values
-                data[column] = pd.to_numeric(data[column], errors="coerce")
-                data = data[data[column].notna()]
-            elif dtype == "number":
-                # Convert to float, drop rows with invalid values
-                data[column] = pd.to_numeric(data[column], errors="coerce")
-                data = data[data[column].notna()]
-            elif dtype == "boolean":
-                # Convert to boolean
-                data[column] = data[column].astype(bool)
-            elif dtype in ["string", "text", "long_text"]:
-                # Treat as string
-                data[column] = data[column].astype(str)
-            elif dtype == "binary":
-                # Leave binary data as is (optional additional validation if required)
-                pass
-            elif dtype == "uuid":
-                # Validate UUID format
-                data[column] = data[column].apply(
-                    lambda x: (
-                        x
-                        if pd.notna(x) and isinstance(x, str) and len(x) == 36
-                        else np.nan
-                    )
-                )
-                data = data[data[column].notna()]
+        # Clean and validate columns
+        for col_meta in column_info:
+            col_name, col_type = col_meta["column_name"], col_meta["column_type"]
+            if col_name in data.columns:
+                if col_type == "date":
+                    data[col_name] = pd.to_datetime(data[col_name], errors="coerce")
+                elif col_type in ["integer", "float"]:
+                    data[col_name] = pd.to_numeric(data[col_name], errors="coerce")
+                elif col_type == "string":
+                    data[col_name] = data[col_name].astype(str)
+                elif col_type == "boolean":
+                    data[col_name] = data[col_name].astype(bool)
+                data = data[data[col_name].notna()]
             else:
-                print(f"Unsupported data type '{dtype}' for column '{column}'.")
+                print(f"Warning: Column '{col_name}' not found in dataset.")
 
-        else:
-            print(f"Column '{column}' not found in dataset.")
-
-    # Generate summary statistics
-    summary = data.describe(include="all").transpose()
-
-    # Add additional summary metrics for categorical columns
-    for col in data.select_dtypes(include="category").columns:
-        summary.loc[col, "unique_values"] = data[col].nunique()
-        summary.loc[col, "most_frequent"] = data[col].mode()[0]
-
-    return data, summary
-
-
-# Example usage
-if __name__ == "__main__":
-    # import json
-
-    # Accept column info dynamically from a JSON string
-    column_info_input = output
-    try:
-        column_info_dict = json.loads(column_info_input)
-
-        if (
-            not isinstance(column_info_dict, dict)
-            or "column_metadata" not in column_info_dict
-        ):
-            raise Exception(
-                "Invalid format: The input JSON must contain 'column_metadata' key with list of dictionaries."
-            )
-
-        column_info = column_info_dict["column_metadata"]
-        if not isinstance(column_info, list):
-            raise Exception("'column_metadata' must be a list of dictionaries.")
-
-    except json.JSONDecodeError:
-        raise Exception("Invalid JSON format for column info.")
-
-    file_path = filename
-    try:
-        cleaned_data, summary_stats = clean_and_summarize_data(file_path, column_info)
-        print("Cleaned Data:")
-        print(cleaned_data)
-        print("\nSummary Statistics:")
-        print(summary_stats)
+        summary = data.describe(include="all").transpose()
+        return data, summary
     except Exception as e:
-        print(f"Error: {e}")
+        raise Exception(f"Error during data cleaning: {e}")
 
-######################################################################
+
+# Main Block
+if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        filename = sys.argv[1]
+
+        # Encoding Detection and Cleaning
+        encoding = detect_encoding(filename)
+        clean_file_encoding(filename, encoding)
+
+        # Read Sample Data
+        sample_data = read_sample_data(filename)
+
+        # JSON Payload Preparation
+        functions = [
+            {
+                "name": "get_column_type",
+                "description": "Identify column names and their data types from a dataset",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "column_metadata": {
+                            "type": "array",
+                            "description": "Meta data for each column.",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "column_name": {
+                                        "type": "string",
+                                        "description": "Name of the column.",
+                                    },
+                                    "column_type": {
+                                        "type": "string",
+                                        "description": "DataType of the column.",
+                                    },
+                                },
+                                "required": ["column_name", "column_type"],
+                            },
+                        },
+                    },
+                    "required": ["column_metadata"],
+                },
+            }
+        ]
+
+        # Prompt to the LLM
+        prompt_content = """
+            "Analyze the given dataset."
+            "The first line is the header and the subsequest lines are sample data."
+            "Identify the column names with their data types from a CSV file."
+            "Infer the data type by considering majority of the values in each column."
+            "Columns may have unclean data in them. Ignore those cells"
+            "Supported types are 'string', 'integer', 'boolean', 'float', 'date'."
+            "Analyze the given data and return a JSON object where,"
+            "each entry has the column name and its inferred data type."
+            "The response should directly use the 'get_column_type' function."
+        """
+
+        json_payload = prepare_json_payload(prompt_content, sample_data, functions)
+
+        # API Interaction
+        api_response = post_to_api(API_URL, HEADERS, json_payload)
+        column_info = (
+            api_response.get("choices", [{}])[0]
+            .get("message", {})
+            .get("function_call", {})
+            .get("arguments", {})
+        )
+        try:
+            column_metadata = json.loads(column_info).get("column_metadata", [])
+        except json.JSONDecodeError:
+            print("Error: Invalid JSON response from API")
+            sys.exit(1)
+
+        # Data Cleaning and Summarization
+        try:
+            cleaned_data, summary_stats = clean_and_summarize_data(
+                filename, column_metadata
+            )
+            print("Cleaned Data:")
+            print(cleaned_data)
+            print("\nSummary Statistics:")
+            print(summary_stats)
+        except Exception as e:
+            print(f"Error: {e}")
+    else:
+        print("Error: Please provide a CSV filename as an argument.")
